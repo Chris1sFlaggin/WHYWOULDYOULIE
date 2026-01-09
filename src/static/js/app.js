@@ -1,23 +1,22 @@
 const API = "http://localhost:8080";
 let BLOCKCHAIN = null;
 let ACTIVE_USER = localStorage.getItem("poh_user");
-let EXPLORE_FILTER = null; // Filtro per la ricerca utente
+let EXPLORE_FILTER = null;
 
 // --- INIT ---
 document.addEventListener("DOMContentLoaded", async () => {
-    // 1. Carichiamo PRIMA la blockchain per verificare se l'utente esiste ancora
     await loadChain();
 
-    // 2. Controllo coerenza sessione (Fix per il problema del reset DB)
+    // Fix logout se DB resettato
     if (ACTIVE_USER && BLOCKCHAIN.UsersState && !BLOCKCHAIN.UsersState[ACTIVE_USER]) {
-        console.warn("Utente locale non trovato nel DB (Blockchain resettata?). Eseguo Logout.");
-        logout(); // Pulisce localStorage e ricarica
+        console.warn("Utente locale non trovato nel DB. Logout automatico.");
+        logout(); 
         return;
     }
 
     checkAuth();
 
-    // UI Sidebar: Mostra utente loggato e bottone Logout
+    // Sidebar UI
     if(ACTIVE_USER) {
         const authBox = document.querySelector('.auth-box');
         if(authBox) authBox.innerHTML = `
@@ -26,19 +25,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         `;
     }
     
-    // Routing Semplice basato sul nome del file HTML
+    // Router
     const path = window.location.pathname;
-    if(path.includes("explore.html")) renderExplore();
+    if(path.includes("explore.html")) {
+        setupExplorePage(); // Attiva il tasto ENTER
+        renderExplore();
+    }
     else if(path.includes("create.html")) setupCreatePage();
     else if(path.includes("activity.html")) renderActivity();
     else if(path.includes("profile.html")) renderProfile();
     else renderHome();
 });
 
-// --- AUTHENTICATION ---
-function checkAuth() {
-    if(!ACTIVE_USER) showLoginModal();
-}
+// --- AUTH ---
+function checkAuth() { if(!ACTIVE_USER) showLoginModal(); }
 
 function showLoginModal() {
     if(document.getElementById('loginModal')) return;
@@ -49,7 +49,7 @@ function showLoginModal() {
         <div class="modal-box">
             <div class="brand" style="margin-bottom:20px; color:var(--accent)">WHYWOULDYOULIE</div>
             <h3 class="modal-title">Identify Yourself</h3>
-            <input type="text" id="modalUser" class="modal-input" placeholder="Username (e.g. Neo)">
+            <input type="text" id="modalUser" class="modal-input" placeholder="Username">
             <button class="modal-btn" onclick="performLogin()">ENTER SYSTEM</button>
         </div>
     `;
@@ -59,7 +59,6 @@ function showLoginModal() {
 async function performLogin() {
     const user = document.getElementById('modalUser').value.trim();
     if(!user) return alert("Username required");
-    // Registra utente (se non esiste) o fa login
     await sendTx(user, 'REGISTER_USER', {});
     localStorage.setItem("poh_user", user);
     ACTIVE_USER = user;
@@ -71,7 +70,7 @@ function logout() {
     window.location.reload();
 }
 
-// --- CORE DATA ---
+// --- CORE ---
 async function loadChain() {
     try {
         const res = await fetch(`${API}/chain`);
@@ -79,7 +78,6 @@ async function loadChain() {
     } catch(e) { console.error("API Error", e); }
 }
 
-// --- UTILITIES ---
 async function sendTx(sender, action, extra) {
     try {
         await fetch(`${API}/transact`, {
@@ -89,14 +87,11 @@ async function sendTx(sender, action, extra) {
     } catch(e) { alert("Tx Error: " + e); }
 }
 
-// Upload generico per immagini (post o avatar)
 async function genericUpload(fileInputId) {
     const fileInput = document.getElementById(fileInputId);
     if(!fileInput || fileInput.files.length === 0) return null;
-    
     const formData = new FormData();
     formData.append("image", fileInput.files[0]);
-
     const res = await fetch(`${API}/upload`, { method: 'POST', body: formData });
     if(!res.ok) throw new Error("Upload Failed");
     return (await res.json()).filename;
@@ -121,7 +116,19 @@ function getCancelledReposts(blocks) {
     return s;
 }
 
-// --- PAGE: EXPLORE (SEARCH & GRID) ---
+// --- EXPLORE ---
+function setupExplorePage() {
+    // Aggiunge ascolto per tasto Invio
+    const input = document.getElementById('searchInput');
+    if(input) {
+        input.addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                searchUser();
+            }
+        });
+    }
+}
+
 function searchUser() {
     const term = document.getElementById('searchInput').value.trim();
     EXPLORE_FILTER = term || null;
@@ -133,7 +140,6 @@ function renderExplore() {
     if(!grid) return;
     grid.innerHTML = "";
 
-    // Header Risultati Ricerca
     const header = document.getElementById('explore-header');
     if(header) {
         if(EXPLORE_FILTER) {
@@ -144,20 +150,19 @@ function renderExplore() {
         }
     }
 
+    if (!BLOCKCHAIN || !BLOCKCHAIN.Blocks) return;
+
     BLOCKCHAIN.Blocks.slice().reverse().forEach(block => {
         const tx = block.Transaction;
         if(tx.ActionType !== 'POST_IMAGE') return;
 
-        // --- FIX LOGICA RICERCA ---
+        // FILTRO RICERCA
         if(EXPLORE_FILTER) {
             const senderLower = tx.Sender.toLowerCase();
             const filterLower = EXPLORE_FILTER.toLowerCase();
-            // Ora usa includes() invece di uguaglianza esatta
             if(!senderLower.includes(filterLower)) return;
         }
-        // --------------------------
 
-        // Censura Community
         const imgState = BLOCKCHAIN.ImagesState[toHex(block.Hash)];
         if(imgState && imgState.Fakes > (imgState.Likes + 2)) return;
 
@@ -175,17 +180,16 @@ function renderExplore() {
     if(grid.innerHTML === "") grid.innerHTML = "<div style='color:gray; padding:20px'>No content found.</div>";
 }
 
-// --- PAGE: PROFILE (AVATAR & BIO) ---
+// --- PROFILE ---
 async function changeAvatar() {
     try {
         const filename = await genericUpload('avatarInput');
         if(filename) {
-            // Aggiorna solo avatar via JSON payload nella transazione
             const jsonPayload = JSON.stringify({ avatar: filename });
             await sendTx(ACTIVE_USER, 'SET_PROFILE', { content: jsonPayload });
             window.location.reload();
         }
-    } catch(e) { alert("Avatar update failed: " + e); }
+    } catch(e) { alert("Avatar error: " + e); }
 }
 
 async function updateBio() {
@@ -202,7 +206,6 @@ function renderProfile() {
 
     document.getElementById('profile-username').innerText = ACTIVE_USER;
     
-    // Logica Avatar: Se esiste, mostra immagine, altrimenti lettera iniziale
     const imgEl = document.getElementById('profile-avatar-img');
     const txtEl = document.getElementById('profile-avatar-text');
     
@@ -219,7 +222,6 @@ function renderProfile() {
     document.getElementById('p-followers').innerText = profile.Followers ? profile.Followers.length : 0;
     document.getElementById('p-following').innerText = profile.Following ? profile.Following.length : 0;
 
-    // Sezione Bio & Edit
     const bioContainer = document.getElementById('profile-bio-container');
     bioContainer.innerHTML = `
         <div style="color:var(--text-sec); font-style:italic">"${profile.Bio || 'No bio yet.'}"</div>
@@ -229,11 +231,10 @@ function renderProfile() {
         </div>
     `;
 
-    // Griglia dei Post Utente
     const grid = document.getElementById('profile-grid');
     grid.innerHTML = "";
+    
     let postCount = 0;
-
     BLOCKCHAIN.Blocks.slice().reverse().forEach(block => {
         const tx = block.Transaction;
         if(tx.Sender !== ACTIVE_USER || tx.ActionType !== 'POST_IMAGE') return;
@@ -246,7 +247,7 @@ function renderProfile() {
     document.getElementById('p-posts').innerText = postCount;
 }
 
-// --- PAGE: CREATE (UPLOAD) ---
+// --- CREATE ---
 function setupCreatePage() {
     const fileInput = document.getElementById('realFileInput');
     if(fileInput) {
@@ -266,7 +267,7 @@ async function uploadAndPost() {
     } catch(e) { alert(e); }
 }
 
-// --- PAGE: HOME (FEED) ---
+// --- HOME ---
 function renderHome() {
     const container = document.getElementById('feed-container');
     if(!container) return;
@@ -279,17 +280,10 @@ function renderHome() {
     const blocks = BLOCKCHAIN.Blocks.slice().reverse().filter(block => {
         const tx = block.Transaction;
         if(tx.ActionType !== 'POST_IMAGE' && tx.ActionType !== 'REPOST') return false;
-        
-        // Non mostrare Repost annullati
         if(tx.ActionType === 'REPOST' && cancelledReposts.has(`${tx.Sender}:${tx.TargetHash}`)) return false;
-
         const targetHash = tx.ActionType === 'REPOST' ? tx.TargetHash : toHex(block.Hash);
         const imgState = BLOCKCHAIN.ImagesState[targetHash];
-        
-        // Censura Community
         if(imgState && imgState.Fakes > (imgState.Likes + 2)) return false;
-
-        // Logica Feed: Mostra post MIEI o di chi SEGUO
         if(tx.Sender === ACTIVE_USER || following.includes(tx.Sender)) return true;
         return false;
     });
@@ -298,16 +292,13 @@ function renderHome() {
     blocks.forEach(block => container.appendChild(createPostCard(block)));
 }
 
-// --- PAGE: ACTIVITY ---
+// --- ACTIVITY ---
 function renderActivity() {
     const container = document.getElementById('activity-list');
     if(!container) return;
-    
-    // Filtra notifiche per l'utente attivo
     const notifs = BLOCKCHAIN.Blocks.slice().reverse().filter(b => 
         b.Transaction.ActionType === 'FOLLOW' && b.Transaction.TargetUser === ACTIVE_USER
     );
-
     notifs.forEach(block => {
         const div = document.createElement('div');
         div.className = 'notif-item';
@@ -319,19 +310,15 @@ function renderActivity() {
     });
 }
 
-// --- UI COMPONENT: POST CARD ---
 function createPostCard(block) {
     const tx = block.Transaction;
     const isRepost = tx.ActionType === 'REPOST';
     const targetHash = isRepost ? tx.TargetHash : toHex(block.Hash);
     
-    // Trova blocco originale (se è un repost)
     let original = isRepost ? BLOCKCHAIN.Blocks.find(b => toHex(b.Hash) === tx.TargetHash) : block;
     if(!original) return document.createElement('div');
 
-    // Trova Profilo dell'Autore Originale (per mostrare l'Avatar)
     const senderProfile = BLOCKCHAIN.UsersState[original.Transaction.Sender];
-    
     let avatarHTML = `<div class="avatar">${original.Transaction.Sender[0]}</div>`;
     if(senderProfile && senderProfile.Avatar) {
         avatarHTML = `<img src="${API}/files/${senderProfile.Avatar}" class="avatar" style="object-fit:cover;">`;
@@ -346,8 +333,6 @@ function createPostCard(block) {
     div.className = 'post-card';
 
     let headerHTML = isRepost ? `<div class="repost-label" style="padding:0 15px">🔁 ${tx.Sender} ha ripubblicato</div>` : '';
-    
-    // Bottone Segui (appare solo se non stai già seguendo e non sei tu)
     let followBtn = (original.Transaction.Sender !== ACTIVE_USER && !isFollowing) 
         ? `<span style="color:var(--accent); font-size:0.8em; margin-left:auto; cursor:pointer; font-weight:bold" onclick="sendTx('${ACTIVE_USER}', 'FOLLOW', {target_user: '${original.Transaction.Sender}'}); window.location.reload();">Segui</span>` 
         : '';
@@ -367,9 +352,6 @@ function createPostCard(block) {
                 <span class="material-icons-round action-icon" onclick="sendTx('${ACTIVE_USER}', '${iReposted ? 'UNREPOST' : 'REPOST'}', {target_hash: '${targetHash}'}); window.location.reload();" style="color:${iReposted?'var(--repost)':'inherit'}">repeat</span>
             </div>
             <div class="likes-count">${imgState.Likes} real | ${imgState.Fakes} fakes</div>
-            <div class="metrics">
-                Entropy: ${original.EntropyScore.toFixed(2)} | StdDev: ${original.StdDevScore.toFixed(2)}
-            </div>
         </div>
     `;
     return div;
