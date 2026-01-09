@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Create - WHYWOULDYOULIE</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="brand">WHYWOULDYOULIE</div>
+        <a href="index.html" class="nav-item"><span class="material-icons-round">home</span> Home</a>
+        <a href="explore.html" class="nav-item"><span class="material-icons-round">search</span> Explore</a>
+        <a href="create.html" class="nav-item active"><span class="material-icons-round">add_box</span> Create</a>
+        <a href="activity.html" class="nav-item"><span class="material-icons-round">favorite_border</span> Activity</a>
+        <a href="profile.html" class="nav-item"><span class="material-icons-round">person</span> Profile</a>
+        <div class="auth-box"></div> </nav>
+    <main class="main-content">
+        <div class="container">
+            <div class="create-box">
+                <span class="material-icons-round" style="font-size: 4em;">cloud_upload</span>
+                <h3>Upload Evidence</h3>
+                
+                <div class="file-upload-wrapper">
+                    <label for="realFileInput" class="custom-file-btn">
+                        <span class="material-icons-round">folder_open</span> Choose File
+                    </label>
+                    <input type="file" id="realFileInput" accept="image/*">
+                    <div id="fileNameDisplay" class="file-name-display">No file selected</div>
+                </div>
+
+                <br>
+                <button class="btn-primary" onclick="uploadAndPost()">SUBMIT TO CHAIN</button>
+            </div>
+        </div>
+    </main>
+    <script src="js/app.js"></script>
+</body>
+</html>
