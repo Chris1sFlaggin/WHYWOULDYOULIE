@@ -46,14 +46,15 @@ const (
 	ActionSavePost     = "SAVE_POST"
 	ActionRepost       = "REPOST"
 	ActionUnrepost     = "UNREPOST"
-	ActionSetProfile   = "SET_PROFILE" // NUOVO
+	ActionSetProfile   = "SET_PROFILE"
 )
 
 type UserProfile struct {
 	Username     string
 	PublicKeyPEM []byte
 	RegisteredAt int64
-	Bio          string // NUOVO: Descrizione utente
+	Bio          string
+	Avatar       string
 	Following    []string
 	Followers    []string
 	SavedPosts   []string
@@ -68,7 +69,7 @@ type TxData struct {
 	TargetHash       string
 	TargetUser       string
 	VoteType         string
-	ContentText      string // Usato per nome immagine o per la BIO
+	ContentText      string
 }
 
 type Block struct {
@@ -211,9 +212,19 @@ func (bc *Blockchain) updateState(block *Block) {
 			Bio: "New user of WhyWouldYouLie.", // Bio default
 		}
 
-	case ActionSetProfile: // NUOVO
+	case ActionSetProfile:
 		if u, ok := bc.UsersState[tx.Sender]; ok {
-			u.Bio = tx.ContentText
+			var data map[string]string
+			if err := json.Unmarshal([]byte(tx.ContentText), &data); err == nil {
+				if val, exists := data["bio"]; exists {
+					u.Bio = val
+				}
+				if val, exists := data["avatar"]; exists {
+					u.Avatar = val
+				}
+			} else {
+				u.Bio = tx.ContentText
+			}
 		}
 
 	case ActionPostImage:

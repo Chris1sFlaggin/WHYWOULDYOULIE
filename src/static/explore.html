@@ -14,14 +14,18 @@
         <a href="create.html" class="nav-item"><span class="material-icons-round">add_box</span> Create</a>
         <a href="activity.html" class="nav-item"><span class="material-icons-round">favorite_border</span> Activity</a>
         <a href="profile.html" class="nav-item"><span class="material-icons-round">person</span> Profile</a>
-        <div class="auth-box">
-            <input type="text" id="activeUser" value="Alice">
-            <button onclick="registerUser()">LOGIN</button>
-        </div>
+        <div class="auth-box"></div>
     </nav>
     <main class="main-content">
         <div class="container">
             <h2 style="margin-left:5px">Global Evidence</h2>
+            
+            <div style="display:flex; gap:10px; margin-bottom:20px; padding:0 5px;">
+                <input type="text" id="searchInput" class="edit-bio-input" placeholder="Search user..." style="margin:0;">
+                <button class="btn-primary" style="margin:0; width:auto;" onclick="searchUser()">SEARCH</button>
+            </div>
+
+            <div id="explore-header" style="margin-bottom:20px; color:var(--accent); font-weight:bold; display:none;"></div>
             <div id="explore-grid" class="grid-container"></div>
         </div>
     </main>
