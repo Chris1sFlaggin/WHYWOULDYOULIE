@@ -16,10 +16,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     checkAuth();
 
-    if(ACTIVE_USER) {
+    if(ACTIVE_USER && BLOCKCHAIN.UsersState[ACTIVE_USER]) {
+        const userState = BLOCKCHAIN.UsersState[ACTIVE_USER];
         const authBox = document.querySelector('.auth-box');
         if(authBox) authBox.innerHTML = `
-            <div style="margin-bottom:10px">Logged as <b>${ACTIVE_USER}</b></div>
+            <div style="margin-bottom:10px">
+                Logged as <b style="color:var(--accent)">${ACTIVE_USER}</b><br>
+                <span style="color:var(--green); font-size:1.2em">💰 ${userState.Balance} CR</span>
+            </div>
             <button class="btn-logout" onclick="logout()">LOGOUT</button>
         `;
     }
@@ -444,8 +448,7 @@ function renderActivity() {
 function createPostCard(block) {
     const tx = block.Transaction;
     const isRepost = tx.ActionType === 'REPOST';
-    const hash = toHex(block.Hash);
-    const targetHash = isRepost ? tx.TargetHash : hash;
+    const targetHash = isRepost ? tx.TargetHash : toHex(block.Hash);
     
     let original = isRepost ? BLOCKCHAIN.Blocks.find(b => toHex(b.Hash) === tx.TargetHash) : block;
     if(!original) return document.createElement('div');
@@ -458,6 +461,24 @@ function createPostCard(block) {
 
     const imgState = BLOCKCHAIN.ImagesState[targetHash];
     
+    // Gestione visuale Post Risolto/Bannato
+    let overlayStatus = "";
+    if(imgState.Resolved) {
+        if(imgState.Verdict === "BANNED_FAKE") {
+            overlayStatus = `<div style="background:rgba(255,0,0,0.8); color:white; padding:5px; text-align:center; font-weight:bold; margin-bottom:5px;">🚫 FAKE CONFIRMED - POST REMOVED</div>`;
+        } else {
+            overlayStatus = `<div style="background:rgba(0,255,0,0.2); color:#afa; padding:5px; text-align:center; font-weight:bold; margin-bottom:5px;">✅ VERIFIED REAL - PAYOUT DONE</div>`;
+        }
+    }
+
+    const div = document.createElement('div');
+    div.className = 'post-card';
+
+    // Se è bannato, nascondi l'immagine o mettila in grayscale
+    let imgStyle = (imgState.Verdict === "BANNED_FAKE") ? "filter:grayscale(100%) blur(5px);" : "";
+
+    let headerHTML = isRepost ? `<div class="repost-label" style="padding:0 15px">🔁 ${tx.Sender} ha ripubblicato</div>` : '';
+
     // Commenti
     let commentsHTML = "";
     if(imgState.Comments && imgState.Comments.length > 0) {
@@ -466,29 +487,24 @@ function createPostCard(block) {
         });
     }
 
-    const div = document.createElement('div');
-    div.className = 'post-card';
-
-    let headerHTML = isRepost ? `<div class="repost-label" style="padding:0 15px">🔁 ${tx.Sender} ha ripubblicato</div>` : '';
-    let followBtn = ""; // In home card usually no follow btn, handled in explore
-
     div.innerHTML = `
         ${headerHTML}
+        ${overlayStatus}
         <div class="post-header" style="padding: 10px 15px;">
             ${avatarHTML}
             <div class="username" onclick="goToProfile('${original.Transaction.Sender}')">${original.Transaction.Sender}</div>
+            <div style="margin-left:auto; font-size:0.8em; color:gold;">Pool: ${imgState.PrizePool} CR</div>
         </div>
-        <img class="post-img" src="${API}/files/${original.Transaction.ContentText}">
+        <img class="post-img" src="${API}/files/${original.Transaction.ContentText}" style="${imgStyle}">
         <div style="padding: 0 15px;">
             <div class="post-actions">
-                <span class="material-icons-round action-icon" onclick="sendTx('${ACTIVE_USER}', 'VOTE', {target_hash: '${targetHash}', vote_type: 'BELIEVE'}); window.location.reload();" style="color:${imgState.Likes>0?'var(--green)':'inherit'}">thumb_up</span>
-                <span class="material-icons-round action-icon" onclick="sendTx('${ACTIVE_USER}', 'VOTE', {target_hash: '${targetHash}', vote_type: 'FAKE'}); window.location.reload();" style="color:${imgState.Fakes>0?'var(--accent)':'inherit'}">thumb_down</span>
+                <span class="material-icons-round action-icon" onclick="sendTx('${ACTIVE_USER}', 'VOTE', {target_hash: '${targetHash}', vote_type: 'BELIEVE'}); window.location.reload();" style="color:${imgState.Likes>0?'var(--green)':'inherit'}" title="Cost: 5 CR">thumb_up</span>
+                <span class="material-icons-round action-icon" onclick="sendTx('${ACTIVE_USER}', 'VOTE', {target_hash: '${targetHash}', vote_type: 'FAKE'}); window.location.reload();" style="color:${imgState.Fakes>0?'var(--accent)':'inherit'}" title="Cost: 5 CR">thumb_down</span>
                 <span class="material-icons-round action-icon" onclick="sendComment('${targetHash}')">chat_bubble_outline</span>
                 <span class="material-icons-round action-icon" onclick="sendTx('${ACTIVE_USER}', '${isRepost ? 'UNREPOST' : 'REPOST'}', {target_hash: '${targetHash}'}); window.location.reload();" style="color:${isRepost?'var(--repost)':'inherit'}">repeat</span>
             </div>
-            <div class="likes-count">${imgState.Likes} real | ${imgState.Fakes} fakes</div>
-            <div class="metrics">
-                Entropy: ${original.EntropyScore.toFixed(2)} | StdDev: ${original.StdDevScore.toFixed(2)}
+            <div class="likes-count" style="font-size:0.8em; color:gray">
+                ${imgState.Likes} Real vs ${imgState.Fakes} Fake | Ends in 24h
             </div>
             <div style="margin-top:10px; border-top:1px solid #222; padding-top:5px;">${commentsHTML}</div>
         </div>
