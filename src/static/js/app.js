@@ -132,108 +132,52 @@ function searchUser() {
 
 function renderExplore() {
     const grid = document.getElementById('explore-grid');
-    const userContainer = document.getElementById('user-results');
-    const header = document.getElementById('explore-header');
+    const userList = document.getElementById('user-results');
+    if(!grid || !userList) return;
     
-    if(!grid || !userContainer) return;
-    
-    grid.innerHTML = "";
-    userContainer.innerHTML = "";
+    grid.innerHTML = ""; 
+    userList.innerHTML = "";
 
-    // Gestione Header
-    if(header) {
-        if(EXPLORE_FILTER) {
+    // 1. RICERCA UTENTI (Cerca nel DB Utenti, non solo nei Post)
+    if(EXPLORE_FILTER && BLOCKCHAIN.UsersState) {
+        const filter = EXPLORE_FILTER.toLowerCase();
+        const header = document.getElementById('explore-header');
+        if(header) {
             header.style.display = "block";
-            header.innerText = `Results for: "${EXPLORE_FILTER}"`;
-        } else {
-            header.style.display = "none";
+            header.innerText = `Results for: ${EXPLORE_FILTER}`;
         }
-    }
 
-    if (!BLOCKCHAIN) return;
-
-    // --- 1. CERCA UTENTI (Se c'è filtro) ---
-    if(EXPLORE_FILTER) {
-        const filterLower = EXPLORE_FILTER.toLowerCase();
-        // Prendo tutti gli utenti dallo stato
-        const allUsers = Object.values(BLOCKCHAIN.UsersState);
-        
-        // Filtro per nome
-        const foundUsers = allUsers.filter(u => u.Username.toLowerCase().includes(filterLower));
-        
-        foundUsers.forEach(user => {
-            // Creo card utente
+        Object.values(BLOCKCHAIN.UsersState).filter(u => u.Username.toLowerCase().includes(filter)).forEach(u => {
             const div = document.createElement('div');
-            div.className = 'notif-item'; // Stile riutilizzato
-            div.style.background = '#1a1a1a'; // Leggermente più chiaro
-            div.style.borderRadius = '8px';
-
-            // Logica bottone Follow
-            const myProfile = BLOCKCHAIN.UsersState[ACTIVE_USER];
-            const isFollowing = myProfile && myProfile.Following.includes(user.Username);
-            let actionBtn = '';
+            div.className = 'notif-item';
+            div.style.background = '#1a1a1a'; div.style.borderRadius = '8px'; div.style.marginBottom = '5px';
             
-            if(user.Username !== ACTIVE_USER) {
-                if(isFollowing) {
-                    actionBtn = `<span style="color:gray; font-size:0.8em; margin-left:auto;">Following</span>`;
-                } else {
-                    actionBtn = `<button class="btn-primary" style="padding:5px 15px; font-size:0.8em; margin-left:auto; margin-top:0;" onclick="sendTx('${ACTIVE_USER}', 'FOLLOW', {target_user: '${user.Username}'}); window.location.reload();">Follow</button>`;
-                }
-            } else {
-                actionBtn = `<span style="color:var(--accent); font-size:0.8em; margin-left:auto;">It's you</span>`;
-            }
-
-            // Avatar 
-            let avatarImg = `<div class="avatar">${user.Username[0]}</div>`;
-            if(user.Avatar) avatarImg = `<img src="${API}/files/${user.Avatar}" class="avatar" style="object-fit:cover">`;
+            // Logica Follow
+            const iFollow = BLOCKCHAIN.UsersState[ACTIVE_USER].Following.includes(u.Username);
+            let btn = (u.Username !== ACTIVE_USER) 
+                ? `<button class="btn-primary" style="padding:5px 15px; margin-left:auto; font-size:0.8em" onclick="sendTx('${ACTIVE_USER}', '${iFollow?'UNFOLLOW':'FOLLOW'}', {target_user:'${u.Username}'});window.location.reload()">${iFollow?'Unfollow':'Follow'}</button>` 
+                : `<span style="margin-left:auto; color:gray">You</span>`;
 
             div.innerHTML = `
-                ${avatarImg}
-                <div>
-                    <b>${user.Username}</b>
-                    <div style="font-size:0.8em; color:gray">${user.Bio || ''}</div>
-                </div>
-                ${actionBtn}
+                <div class="avatar" onclick="goToProfile('${u.Username}')" style="cursor:pointer">${u.Avatar ? `<img src="${API}/files/${u.Avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : u.Username[0]}</div>
+                <div style="margin-left:10px; cursor:pointer" onclick="goToProfile('${u.Username}')"><b>${u.Username}</b><br><span style="font-size:0.8em;color:gray">${u.Bio||''}</span></div>
+                ${btn}
             `;
-            userContainer.appendChild(div);
+            userList.appendChild(div);
         });
-
-        if(foundUsers.length === 0) {
-            // userContainer.innerHTML = "<div style='color:gray; padding:10px'>No users found.</div>";
-        }
     }
 
-    // --- 2. CERCA POST (Immagini) ---
-    let foundPosts = 0;
-    BLOCKCHAIN.Blocks.slice().reverse().forEach(block => {
-        const tx = block.Transaction;
+    // 2. RICERCA POST
+    BLOCKCHAIN.Blocks.slice().reverse().forEach(b => {
+        const tx = b.Transaction;
         if(tx.ActionType !== 'POST_IMAGE') return;
-
-        // Filtro Ricerca Post
-        if(EXPLORE_FILTER) {
-            const senderLower = tx.Sender.toLowerCase();
-            const filterLower = EXPLORE_FILTER.toLowerCase();
-            if(!senderLower.includes(filterLower)) return;
-        }
-
-        const imgState = BLOCKCHAIN.ImagesState[toHex(block.Hash)];
-        if(imgState && imgState.Fakes > (imgState.Likes + 2)) return;
-
-        foundPosts++;
+        if(EXPLORE_FILTER && !tx.Sender.toLowerCase().includes(EXPLORE_FILTER.toLowerCase())) return;
+        
         const div = document.createElement('div');
         div.className = 'grid-item';
-        div.innerHTML = `
-            <img src="${API}/files/${tx.ContentText}">
-            <div class="grid-overlay">
-                <span class="material-icons-round">favorite</span> ${imgState ? imgState.Likes : 0}
-            </div>
-        `;
+        div.innerHTML = `<img src="${API}/files/${tx.ContentText}">`;
         grid.appendChild(div);
     });
-
-    if(foundPosts === 0 && (!EXPLORE_FILTER || userContainer.innerHTML === "")) {
-        grid.innerHTML = "<div style='color:gray; padding:20px'>No content found.</div>";
-    }
 }
 
 // --- PROFILE ---
@@ -256,51 +200,87 @@ async function updateBio() {
     window.location.reload();
 }
 
+function goToProfile(username) {
+    localStorage.setItem("view_profile", username);
+    window.location.href = "profile.html";
+}
+
 function renderProfile() {
-    const profile = BLOCKCHAIN.UsersState[ACTIVE_USER];
+    // Determina quale profilo mostrare: quello richiesto o l'utente attivo
+    const viewUser = localStorage.getItem("view_profile") || ACTIVE_USER;
+    const profile = BLOCKCHAIN.UsersState[viewUser];
+    const isMe = (viewUser === ACTIVE_USER);
+
     if(!profile) return;
 
-    document.getElementById('profile-username').innerText = ACTIVE_USER;
+    // Imposta Header Profilo
+    document.getElementById('profile-username').innerText = viewUser;
     
+    // Gestione Avatar
     const imgEl = document.getElementById('profile-avatar-img');
     const txtEl = document.getElementById('profile-avatar-text');
     
-    if(profile.Avatar) {
-        imgEl.src = `${API}/files/${profile.Avatar}`;
-        imgEl.style.display = "block";
-        txtEl.style.display = "none";
-    } else {
-        imgEl.style.display = "none";
-        txtEl.style.display = "block";
-        txtEl.innerText = ACTIVE_USER[0].toUpperCase();
+    if(profile.Avatar) { 
+        imgEl.src = `${API}/files/${profile.Avatar}`; 
+        imgEl.style.display = "block"; 
+        txtEl.style.display = "none"; 
+    } else { 
+        imgEl.style.display = "none"; 
+        txtEl.style.display = "block"; 
+        txtEl.innerText = viewUser[0].toUpperCase(); 
     }
 
-    document.getElementById('p-followers').innerText = profile.Followers ? profile.Followers.length : 0;
-    document.getElementById('p-following').innerText = profile.Following ? profile.Following.length : 0;
+    // Statistiche
+    document.getElementById('p-followers').innerText = profile.Followers.length;
+    document.getElementById('p-following').innerText = profile.Following.length;
 
-    const bioContainer = document.getElementById('profile-bio-container');
-    bioContainer.innerHTML = `
-        <div style="color:var(--text-sec); font-style:italic">"${profile.Bio || 'No bio yet.'}"</div>
-        <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+    // Logica Dinamica: BIO + Tasti (Edit vs Follow/Message)
+    const container = document.getElementById('profile-bio-container');
+    let html = `<div style="color:var(--text-sec); font-style:italic">"${profile.Bio || ''}"</div>`;
+    
+    if(isMe) {
+        // Se sono io: Mostra input per modificare Bio/Avatar
+        html += `
             <input type="text" id="newBio" class="edit-bio-input" placeholder="Update status...">
             <button onclick="updateBio()" class="btn-primary" style="padding:5px 10px; font-size:0.8em; margin-top:5px;">UPDATE BIO</button>
-        </div>
-    `;
+        `;
+        // Riattiva l'overlay per cambiare avatar
+        const overlay = document.querySelector('.avatar-edit-overlay');
+        if(overlay) overlay.style.display = 'flex';
 
+    } else {
+        // Se è un altro utente: Mostra tasti Follow e Message
+        const iFollow = BLOCKCHAIN.UsersState[ACTIVE_USER].Following.includes(viewUser);
+        html += `
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <button onclick="sendTx('${ACTIVE_USER}', '${iFollow?'UNFOLLOW':'FOLLOW'}', {target_user:'${viewUser}'});window.location.reload()" class="btn-primary" style="flex:1;">${iFollow?'Unfollow':'Follow'}</button>
+                <button onclick="const m=prompt('Message:');if(m)sendTx('${ACTIVE_USER}','PRIVATE_MSG',{target_user:'${viewUser}',content:m})" class="btn-primary" style="flex:1; background:#333;">Message</button>
+            </div>
+        `;
+        // Nascondi l'overlay per cambiare avatar (non puoi cambiare l'avatar degli altri)
+        const overlay = document.querySelector('.avatar-edit-overlay');
+        if(overlay) overlay.style.display = 'none';
+    }
+    
+    container.innerHTML = html;
+
+    // Griglia Post: Filtra SOLO i post dell'utente che stai guardando
     const grid = document.getElementById('profile-grid');
     grid.innerHTML = "";
+    let count = 0;
     
-    let postCount = 0;
-    BLOCKCHAIN.Blocks.slice().reverse().forEach(block => {
-        const tx = block.Transaction;
-        if(tx.Sender !== ACTIVE_USER || tx.ActionType !== 'POST_IMAGE') return;
-        postCount++;
-        const div = document.createElement('div');
-        div.className = 'grid-item';
-        div.innerHTML = `<img src="${API}/files/${tx.ContentText}">`;
-        grid.appendChild(div);
+    BLOCKCHAIN.Blocks.slice().reverse().forEach(b => {
+        // Mostra solo i post originali caricati da viewUser
+        if(b.Transaction.Sender === viewUser && b.Transaction.ActionType === 'POST_IMAGE') {
+            count++;
+            const div = document.createElement('div');
+            div.className = 'grid-item';
+            div.innerHTML = `<img src="${API}/files/${b.Transaction.ContentText}">`;
+            grid.appendChild(div);
+        }
     });
-    document.getElementById('p-posts').innerText = postCount;
+    
+    document.getElementById('p-posts').innerText = count;
 }
 
 // --- CREATE ---
@@ -331,21 +311,20 @@ function renderHome() {
     
     const myProfile = BLOCKCHAIN.UsersState[ACTIVE_USER];
     const following = myProfile ? myProfile.Following : [];
-    const cancelledReposts = getCancelledReposts(BLOCKCHAIN.Blocks);
+    const cancelled = getCancelledReposts(BLOCKCHAIN.Blocks); // Assicurati di avere questa helper function
 
     const blocks = BLOCKCHAIN.Blocks.slice().reverse().filter(block => {
         const tx = block.Transaction;
         if(tx.ActionType !== 'POST_IMAGE' && tx.ActionType !== 'REPOST') return false;
-        if(tx.ActionType === 'REPOST' && cancelledReposts.has(`${tx.Sender}:${tx.TargetHash}`)) return false;
-        const targetHash = tx.ActionType === 'REPOST' ? tx.TargetHash : toHex(block.Hash);
-        const imgState = BLOCKCHAIN.ImagesState[targetHash];
-        if(imgState && imgState.Fakes > (imgState.Likes + 2)) return false;
+        if(tx.ActionType === 'REPOST' && cancelled.has(`${tx.Sender}:${tx.TargetHash}`)) return false;
+        
+        // MOSTRA SE: È un mio post OPPURE l'autore è tra i miei seguiti
         if(tx.Sender === ACTIVE_USER || following.includes(tx.Sender)) return true;
         return false;
     });
 
-    if(blocks.length === 0) container.innerHTML = "<div style='text-align:center; padding:50px'>Follow someone to see posts.</div>";
-    blocks.forEach(block => container.appendChild(createPostCard(block)));
+    if(blocks.length === 0) container.innerHTML = "<div style='text-align:center; padding:50px'>Il feed è vuoto. Cerca utenti in Explore!</div>";
+    blocks.forEach(b => container.appendChild(createPostCard(b)));
 }
 
 // --- ACTIVITY ---

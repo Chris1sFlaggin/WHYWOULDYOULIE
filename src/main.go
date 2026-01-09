@@ -38,16 +38,30 @@ const MinStdDev = 40.0
 const MaxStdDev = 90.0
 
 const (
-	ActionRegisterUser = "REGISTER_USER"
-	ActionPostImage    = "POST_IMAGE"
-	ActionVote         = "VOTE"
-	ActionFollow       = "FOLLOW"
-	ActionUnfollow     = "UNFOLLOW"
-	ActionSavePost     = "SAVE_POST"
-	ActionRepost       = "REPOST"
-	ActionUnrepost     = "UNREPOST"
-	ActionSetProfile   = "SET_PROFILE"
+	ActionRegisterUser   = "REGISTER_USER"
+	ActionPostImage      = "POST_IMAGE"
+	ActionVote           = "VOTE"
+	ActionFollow         = "FOLLOW"
+	ActionUnfollow       = "UNFOLLOW"
+	ActionSavePost       = "SAVE_POST"
+	ActionRepost         = "REPOST"
+	ActionUnrepost       = "UNREPOST"
+	ActionSetProfile     = "SET_PROFILE"
+	ActionComment        = "COMMENT"
+	ActionPrivateMessage = "PRIVATE_MESSAGE"
 )
+
+type PrivateMessage struct {
+	From      string
+	Content   string
+	Timestamp int64
+}
+
+type Comment struct {
+	User      string
+	Content   string
+	Timestamp int64
+}
 
 type UserProfile struct {
 	Username     string
@@ -59,6 +73,7 @@ type UserProfile struct {
 	Followers    []string
 	SavedPosts   []string
 	Reposted     []string
+	Inbox        []PrivateMessage
 }
 
 type TxData struct {
@@ -86,7 +101,7 @@ type ImageReputation struct {
 	Fakes        int
 	Verdict      string
 	CreationTime int64
-	Comments     []string
+	Comments     []Comment
 	Reposts      int
 }
 
@@ -230,7 +245,7 @@ func (bc *Blockchain) updateState(block *Block) {
 	case ActionPostImage:
 		bc.ImagesState[blockHashStr] = &ImageReputation{
 			Verdict: "VOTING_OPEN", CreationTime: block.Timestamp,
-			Comments: []string{}, Reposts: 0,
+			Comments: []Comment{}, Reposts: 0,
 		}
 
 	case ActionVote:
@@ -286,6 +301,19 @@ func (bc *Blockchain) updateState(block *Block) {
 		}
 		if entry, ok := bc.ImagesState[tx.TargetHash]; ok && entry.Reposts > 0 {
 			entry.Reposts--
+		}
+
+	case ActionComment:
+		if entry, ok := bc.ImagesState[tx.TargetHash]; ok {
+			newComment := Comment{User: tx.Sender, Content: tx.ContentText, Timestamp: block.Timestamp}
+			entry.Comments = append(entry.Comments, newComment)
+		}
+
+	case ActionPrivateMessage:
+		targetUser, ok := bc.UsersState[tx.TargetUser]
+		if ok {
+			msg := PrivateMessage{From: tx.Sender, Content: tx.ContentText, Timestamp: block.Timestamp}
+			targetUser.Inbox = append(targetUser.Inbox, msg)
 		}
 	}
 }
