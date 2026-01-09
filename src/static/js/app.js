@@ -7,16 +7,14 @@ let EXPLORE_FILTER = null;
 document.addEventListener("DOMContentLoaded", async () => {
     await loadChain();
 
-    // Fix logout se DB resettato
     if (ACTIVE_USER && BLOCKCHAIN.UsersState && !BLOCKCHAIN.UsersState[ACTIVE_USER]) {
-        console.warn("Utente locale non trovato nel DB. Logout automatico.");
+        console.warn("Utente locale non trovato. Logout.");
         logout(); 
         return;
     }
 
     checkAuth();
 
-    // Sidebar UI
     if(ACTIVE_USER) {
         const authBox = document.querySelector('.auth-box');
         if(authBox) authBox.innerHTML = `
@@ -25,10 +23,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         `;
     }
     
-    // Router
     const path = window.location.pathname;
     if(path.includes("explore.html")) {
-        setupExplorePage(); // Attiva il tasto ENTER
+        setupExplorePage();
         renderExplore();
     }
     else if(path.includes("create.html")) setupCreatePage();
@@ -116,31 +113,34 @@ function getCancelledReposts(blocks) {
     return s;
 }
 
-// --- EXPLORE ---
+// --- EXPLORE & SEARCH ---
 function setupExplorePage() {
-    // Aggiunge ascolto per tasto Invio
     const input = document.getElementById('searchInput');
     if(input) {
-        input.addEventListener("keypress", function(event) {
-            if (event.key === "Enter") {
-                searchUser();
-            }
+        input.addEventListener("keyup", function(event) {
+            if (event.key === "Enter") searchUser();
         });
     }
 }
 
 function searchUser() {
-    const term = document.getElementById('searchInput').value.trim();
-    EXPLORE_FILTER = term || null;
+    const input = document.getElementById('searchInput');
+    if (!input) return;
+    EXPLORE_FILTER = input.value.trim();
     renderExplore();
 }
 
 function renderExplore() {
     const grid = document.getElementById('explore-grid');
-    if(!grid) return;
-    grid.innerHTML = "";
-
+    const userContainer = document.getElementById('user-results');
     const header = document.getElementById('explore-header');
+    
+    if(!grid || !userContainer) return;
+    
+    grid.innerHTML = "";
+    userContainer.innerHTML = "";
+
+    // Gestione Header
     if(header) {
         if(EXPLORE_FILTER) {
             header.style.display = "block";
@@ -150,13 +150,66 @@ function renderExplore() {
         }
     }
 
-    if (!BLOCKCHAIN || !BLOCKCHAIN.Blocks) return;
+    if (!BLOCKCHAIN) return;
 
+    // --- 1. CERCA UTENTI (Se c'è filtro) ---
+    if(EXPLORE_FILTER) {
+        const filterLower = EXPLORE_FILTER.toLowerCase();
+        // Prendo tutti gli utenti dallo stato
+        const allUsers = Object.values(BLOCKCHAIN.UsersState);
+        
+        // Filtro per nome
+        const foundUsers = allUsers.filter(u => u.Username.toLowerCase().includes(filterLower));
+        
+        foundUsers.forEach(user => {
+            // Creo card utente
+            const div = document.createElement('div');
+            div.className = 'notif-item'; // Stile riutilizzato
+            div.style.background = '#1a1a1a'; // Leggermente più chiaro
+            div.style.borderRadius = '8px';
+
+            // Logica bottone Follow
+            const myProfile = BLOCKCHAIN.UsersState[ACTIVE_USER];
+            const isFollowing = myProfile && myProfile.Following.includes(user.Username);
+            let actionBtn = '';
+            
+            if(user.Username !== ACTIVE_USER) {
+                if(isFollowing) {
+                    actionBtn = `<span style="color:gray; font-size:0.8em; margin-left:auto;">Following</span>`;
+                } else {
+                    actionBtn = `<button class="btn-primary" style="padding:5px 15px; font-size:0.8em; margin-left:auto; margin-top:0;" onclick="sendTx('${ACTIVE_USER}', 'FOLLOW', {target_user: '${user.Username}'}); window.location.reload();">Follow</button>`;
+                }
+            } else {
+                actionBtn = `<span style="color:var(--accent); font-size:0.8em; margin-left:auto;">It's you</span>`;
+            }
+
+            // Avatar 
+            let avatarImg = `<div class="avatar">${user.Username[0]}</div>`;
+            if(user.Avatar) avatarImg = `<img src="${API}/files/${user.Avatar}" class="avatar" style="object-fit:cover">`;
+
+            div.innerHTML = `
+                ${avatarImg}
+                <div>
+                    <b>${user.Username}</b>
+                    <div style="font-size:0.8em; color:gray">${user.Bio || ''}</div>
+                </div>
+                ${actionBtn}
+            `;
+            userContainer.appendChild(div);
+        });
+
+        if(foundUsers.length === 0) {
+            // userContainer.innerHTML = "<div style='color:gray; padding:10px'>No users found.</div>";
+        }
+    }
+
+    // --- 2. CERCA POST (Immagini) ---
+    let foundPosts = 0;
     BLOCKCHAIN.Blocks.slice().reverse().forEach(block => {
         const tx = block.Transaction;
         if(tx.ActionType !== 'POST_IMAGE') return;
 
-        // FILTRO RICERCA
+        // Filtro Ricerca Post
         if(EXPLORE_FILTER) {
             const senderLower = tx.Sender.toLowerCase();
             const filterLower = EXPLORE_FILTER.toLowerCase();
@@ -166,6 +219,7 @@ function renderExplore() {
         const imgState = BLOCKCHAIN.ImagesState[toHex(block.Hash)];
         if(imgState && imgState.Fakes > (imgState.Likes + 2)) return;
 
+        foundPosts++;
         const div = document.createElement('div');
         div.className = 'grid-item';
         div.innerHTML = `
@@ -177,7 +231,9 @@ function renderExplore() {
         grid.appendChild(div);
     });
 
-    if(grid.innerHTML === "") grid.innerHTML = "<div style='color:gray; padding:20px'>No content found.</div>";
+    if(foundPosts === 0 && (!EXPLORE_FILTER || userContainer.innerHTML === "")) {
+        grid.innerHTML = "<div style='color:gray; padding:20px'>No content found.</div>";
+    }
 }
 
 // --- PROFILE ---
